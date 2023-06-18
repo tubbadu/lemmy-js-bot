@@ -109,6 +109,14 @@ function db_init(){
 		id int,
 		PRIMARY KEY(id)
 	)`);
+	db.run(`CREATE TABLE IF NOT EXISTS processedMentions(
+		id int,
+		PRIMARY KEY(id)
+	)`);
+	db.run(`CREATE TABLE IF NOT EXISTS processedPrivateMessages(
+		id int,
+		PRIMARY KEY(id)
+	)`);
 	db.run(`CREATE TABLE IF NOT EXISTS reminders (
 		request_comment_id INT,
 		time CHAR(26),

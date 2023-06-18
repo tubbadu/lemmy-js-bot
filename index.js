@@ -17,6 +17,9 @@ let bot = new LemmyJSBot({
 	onNewComment: onNewComment
 });
 
+bot.login();
+bot.start();
+
 function onNewComment(comment){
 	console.log(comment.comment.content)
 	bot.preventReprocess(comment)

@@ -1,17 +1,6 @@
 import { LemmyHttp } from 'lemmy-js-client';
 import Db from "./db.js"
 
-
-
-function onNewComments(){
-	while(newComments.length > 0){
-		let comment = newComments.pop();
-		console.log(">", comment.comment.id)
-		Db.addKey("id", comment.comment.id, "processedComments")
-	}
-}
-
-
 export class LemmyJSBot{
 	constructor(p){
 		this.loginForm = p.loginForm;
@@ -21,12 +10,14 @@ export class LemmyJSBot{
 		
 		this.onNewComment = p.onNewComment ?? function(){};
 		this.onNewPost = p.onNewPost ?? function(){};
-		this.onMention = p.onMention ?? function(){};
-		this.onKeywordMention = p.onKeywordMention ?? function(){};
+		this.onNewMention = p.onNewMention ?? function(){};
+		this.onNewCommentKeywordMention = p.onNewCommentKeywordMention ?? function(){};
+		this.onNewPostKeywordMention = p.onNewPostKeywordMention ?? function(){};
 		this.keywordsMention = p.keywordsMention ?? [];
-		this.onPrivateMessage = p.onPrivateMessage ?? function(){};
+		this.keywordCaseSensitive = p.keywordCaseSensitive ?? false;
+		this.onNewPrivateMessage = p.onNewPrivateMessage ?? function(){};
 
-		const CommentsOptions = p.commentsOptions ?? {}
+		const CommentsOptions = p.commentsOptions ?? {};
 		this.commentsOptions = {
 			sort: CommentsOptions.sort ?? "New",
 			listing: CommentsOptions.listing ?? "All",
@@ -34,9 +25,9 @@ export class LemmyJSBot{
 			communityFilterID: CommentsOptions.communityFilterID,
 			savedOnly: CommentsOptions.savedOnly ?? false,
 			limit: CommentsOptions.limit,
-		}
+		};
 
-		const PostsOptions = p.postsOptions ?? {}
+		const PostsOptions = p.postsOptions ?? {};
 		this.postsOptions = {
 			sort: PostsOptions.sort ?? "New",
 			listing: PostsOptions.listing ?? "All",
@@ -44,7 +35,20 @@ export class LemmyJSBot{
 			communityFilterID: PostsOptions.communityFilterID,
 			savedOnly: PostsOptions.savedOnly ?? false,
 			limit: PostsOptions.limit,
-		}
+		};
+		
+		const MentionsOptions = p.mentionsOptions ?? {};
+		this.mentionsOptions = {
+			sort: MentionsOptions.sort ?? "New",
+			limit: MentionsOptions.limit,
+			unread_only: MentionsOptions.unread_only,
+		};
+		
+		const PrivateMessagesOptions = p.privateMessagesOptions ?? {};
+		this.privateMessagesOptions = {
+			limit: PrivateMessagesOptions.limit,
+			unread_only: PrivateMessagesOptions.unread_only,
+		};
 		
 		this.debug = p.debug ?? false;
 		this.client = new LemmyHttp('https://' + this.instance); // todo perhaps check if instance is defined
@@ -55,9 +59,6 @@ export class LemmyJSBot{
 		this.newKeywordsMention = [];
 		this.newPrivateMessage = [];
 		this.auth = undefined;
-		
-		this.login()
-		this.start()
 	}
 	
 	jDebug(...args){
@@ -102,8 +103,11 @@ export class LemmyJSBot{
 		this.fetchProcess = setInterval(() => this.refresh(), this.refreshInterval);
 	}
 	
-	refresh(){
-		this.jDebug("fetching...")
+	stop(){
+		// TODO
+	}
+	
+	refreshComments(){
 		this.client.getComments({
 			auth: this.auth,
 			sort: this.commentsOptions.sort,
@@ -127,8 +131,9 @@ export class LemmyJSBot{
 				}
 			});
 		});
-		
-		
+	}
+	
+	refreshPosts(){
 		this.client.getPosts({
 			auth: this.auth,
 			sort: this.commentsOptions.sort,
@@ -139,7 +144,7 @@ export class LemmyJSBot{
 		}).then(res => {
 			res.posts.forEach(post => {
 				if(!this.tempProcessed.has(post.post.id)){
-					Db.isKeyPresent("id", post.post.id, "processedComments").then(isPresent => {
+					Db.isKeyPresent("id", post.post.id, "processedPosts").then(isPresent => {
 						if(!isPresent){
 							// not already processed
 							this.tempProcessed.add(post.post.id);
@@ -149,5 +154,85 @@ export class LemmyJSBot{
 				}
 			});
 		});
+	}
+	
+	refreshMentions(){
+		this.client.getPersonMentions({
+			auth: this.auth,
+			sort: this.mentionsOptions.sort,
+			limit: this.mentionsOptions.limit,
+			unread_only: this.mentionsOptions.unread_only,
+		}).then(res => {
+			res.mentions.forEach(mention => {
+				if(!this.tempProcessed.has(mention.comment.id)){ // is this the correct way? perhaps I should concatenate mention.post and mention.comment IDs' ?
+					Db.isKeyPresent("id", mention.comment.id, "processedMentions").then(isPresent => {
+						if(!isPresent){
+							// not already processed
+							this.tempProcessed.add(mention.comment.id);
+							this.onNewMention(mention)
+						}
+					});
+				}
+			});
+		});
+	}
+	
+	refreshPrivateMessages(){
+		this.client.getPrivateMessages({
+			auth: this.auth,
+			limit: this.privateMessagesOptions.limit,
+			unread_only: this.privateMessagesOptions.unread_only,
+		}).then(res => {
+			res.private_messages.forEach(private_message => {
+				if(!this.tempProcessed.has(private_message.private_message.id)){
+					Db.isKeyPresent("id", private_message.private_message.id, "processedPrivateMessages").then(isPresent => {
+						if(!isPresent){
+							// not already processed
+							this.tempProcessed.add(private_message.private_message.id);
+							this.onNewPrivateMessage(private_message);
+						}
+					});
+				}
+			});
+		});
+	}
+	
+	checkForCommentKeywordMention(comment){
+		let text = comment.comment.content;
+		this.keywordsMention.forEach(keyword => {
+			if(this.keywordCaseSensitive){
+				if(text.includes(keyword)){
+					onNewCommentKeywordMention(keyword, comment);
+				}
+			} else {
+				if(text.toLowerCase().includes(keyword.toLowerCase())){
+					onNewCommentKeywordMention(keyword, comment);
+				}
+			}
+		});
+	}
+	
+	checkForPostKeywordMention(post){
+		let text = post.post.content;
+		this.keywordsMention.forEach(keyword => {
+			if(this.keywordCaseSensitive){
+				if(text.includes(keyword)){
+					onNewPostKeywordMention(keyword, comment);
+				}
+			} else {
+				if(text.toLowerCase().includes(keyword.toLowerCase())){
+					onNewPostKeywordMention(keyword, comment);
+				}
+			}
+		});
+	}
+	
+	refresh(){
+		this.jDebug("fetching...")
+		
+		this.refreshComments();
+		this.refreshPosts();
+		this.refreshMentions();
+		this.refreshPrivateMessages();
 	}
 }
