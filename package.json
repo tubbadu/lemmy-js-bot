@@ -1,0 +1,20 @@
+{
+  "name": "lemmy-js-bot",
+  "version": "1.0.0",
+  "description": "a wrapper for the lemmy-js-client to develop bots more easily",
+  "main": "index.js",
+  "scripts": {
+    "test": "node index.js"
+  },
+  "keywords": [
+    "lemmy",
+    "bot"
+  ],
+  "author": "tubbadu",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "dependencies": {
+    "lemmy-js-client": "^0.18.0-rc.1",
+    "sqlite3": "^5.1.6"
+  }
+}
