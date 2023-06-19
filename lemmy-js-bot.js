@@ -14,9 +14,8 @@ function db_init(){
 		id: "int"
 	}, "id");
 	Db.createTable("processedMentions", {
-		post_id: "int",
-		comment_id: "int"
-	}, ["post_id", "comment_id"]);
+		id: "int"
+	}, "id");
 	Db.createTable("processedPrivateMessages", {
 		id: "int"
 	}, "id");
@@ -83,7 +82,12 @@ export class LemmyJSBot{
 	init(){
 		db_init(this.dbfile);
 		this.client = new LemmyHttp('https://' + this.instance); // todo perhaps check if instance is defined
-		this.tempProcessed = new Set();
+		this.tempProcessed = {
+			posts: new Set(),
+			comments: new Set(),
+			private_messages: new Set(),
+			mentions: new Set()
+		}
 		this.newComments = [];
 		this.newPosts = [];
 		this.newMentions = [];
@@ -92,11 +96,6 @@ export class LemmyJSBot{
 		this.auth = undefined;
 	}
 	
-	jDebug(...args){
-		if(this.debug){
-			console.log(...args);
-		}
-	}
 
 	async login(){
 		if(this.loginForm){
@@ -116,8 +115,7 @@ export class LemmyJSBot{
 	preventReprocess(x){
 		if(x.person_mention){
 			Db.insert({
-				comment_id: x.person_mention.id,
-				post_id: x.person_mention.post.id
+				id: x.person_mention.id,
 			}, "processedMentions");
 		} else if(x.private_message) {
 			Db.insert({
@@ -138,18 +136,7 @@ export class LemmyJSBot{
 	}
 	
 	allowReprocess(x){
-		if(x.comment){
-			Db.remove({
-				id: x.comment.id
-			}, "processedComments")
-		} else if(x.post){
-			Db.remove({
-				id: x.post.id
-			}, "processedPosts")
-		} else {
-			// TODO get the type and then add
-			console.error("not supported atm")
-		}
+		// TODO 
 	}
 	
 	start(){
@@ -172,19 +159,19 @@ export class LemmyJSBot{
 			limit: this.commentsOptions.limit,
 		}).then(res => {
 			res.comments.forEach(comment => {
-				if(!this.tempProcessed.has(comment.comment.id)){
+				if(!this.isSentByMe(comment) && !this.tempProcessed.comments.has(comment.comment.id)){
 					let x = Db.check({
 						id: comment.comment.id
 					}, "processedComments").then(isPresent => {
 						if(!isPresent){
 							if(!this.checkForCommentKeywordMention(comment)){
 								// not already processed
-								this.tempProcessed.add(comment.comment.id);
+								this.tempProcessed.comments.add(comment.comment.id);
 								this.onNewComment(comment)
 							}
 						}
 					}).catch(err => {
-						this.jDebug("error:", err)
+						console.log("error:", err)
 					});
 				}
 			});
@@ -201,14 +188,14 @@ export class LemmyJSBot{
 			limit: this.postsOptions.limit,
 		}).then(res => {
 			res.posts.forEach(post => {
-				if(!this.tempProcessed.has(post.post.id)){
+				if(!this.isSentByMe(post) && !this.tempProcessed.posts.has(post.post.id)){
 					Db.check({
 						id: post.post.id
 					}, "processedPosts").then(isPresent => {
 						if(!isPresent){
 							if(!!this.checkForPostKeywordMention(post)){
 								// not already processed
-								this.tempProcessed.add(post.post.id);
+								this.tempProcessed.posts.add(post.post.id);
 								this.onNewPost(post)
 							}
 						}
@@ -218,7 +205,7 @@ export class LemmyJSBot{
 		});
 	}
 	
-	refreshMentions(){
+	refreshMentions(){ // TODO this can be done better
 		this.client.getPersonMentions({
 			auth: this.auth,
 			sort: this.mentionsOptions.sort,
@@ -226,14 +213,13 @@ export class LemmyJSBot{
 			unread_only: this.mentionsOptions.unread_only,
 		}).then(res => {
 			res.mentions.forEach(mention => {
-				if(!this.tempProcessed.has([mention.post.id, mention.comment.id])){ // is this the correct way? perhaps I should concatenate mention.post and mention.comment IDs' ?
+				if(!this.isSentByMe(mention) && !this.tempProcessed.mentions.has(mention.person_mention.id)){
 					Db.check({
-						post_id: mention.comment.id, 
-						comment_id: mention.post.id
+						id: mention.person_mention.id,
 					}, "processedMentions").then(isPresent => {
 						if(!isPresent){
 							// not already processed
-							this.tempProcessed.add([mention.post.id, mention.comment.id]);
+							this.tempProcessed.mentions.add(mention.person_mention.id);
 							this.onNewMention(mention)
 						}
 					});
@@ -249,13 +235,13 @@ export class LemmyJSBot{
 			unread_only: this.privateMessagesOptions.unread_only,
 		}).then(res => {
 			res.private_messages.forEach(private_message => {
-				if(!this.tempProcessed.has(private_message.private_message.id)){
+				if(!this.isSentByMe(private_message) && !this.tempProcessed.private_messages.has(private_message.private_message.id)){
 					Db.check({
 						id: private_message.private_message.id
 					}, "processedPrivateMessages").then(isPresent => {
 						if(!isPresent){
 							// not already processed
-							this.tempProcessed.add(private_message.private_message.id);
+							this.tempProcessed.private_messages.add(private_message.private_message.id);
 							this.onNewPrivateMessage(private_message);
 						}
 					});
@@ -289,6 +275,10 @@ export class LemmyJSBot{
 		return found;
 	}
 	
+	isSentByMe(x){
+		return (x.creator.name == this.loginForm.username_or_email) // TODO use creator.id
+	}
+	
 	checkForPostKeywordMention(post){
 		let text = post.post.body;
 		if(!text) {
@@ -315,61 +305,51 @@ export class LemmyJSBot{
 	}
 	
 	refresh(){
-		this.jDebug("fetching...")
+		console.log("fetching...")
 		this.refreshComments();
 		this.refreshPosts();
 		this.refreshMentions();
 		this.refreshPrivateMessages();
 	}
 	
+	
+	
 	// useful function made simpler
 	replyToComment(comment, content){
-		if(typeof comment == "object"){
-			const parent_id = comment.comment.id;
-		} else if(typeof comment == "number") {
-			const parent_id = comment;
-		} else {
-			console.error("Error: unvalid comment", comment);
-		}
-		
+		const post_id = comment.post.id;
+		const parent_id = comment.comment.id;
 		this.createComment({
+			post_id: post_id,
 			parent_id: parent_id,
 			content: content
 		});
-		this.jDebug("Replied to comment ID", parent_id);
+		console.log("Replied to comment ID", parent_id, "on post ID", post_id);
 	}
 	
 	replyToPost(post, content){
-		if(typeof post == "object"){
-			const parent_id = post.post.id;
-		} else if(typeof post == "number") {
-			const parent_id = post;
-		} else {
-			console.error("Error: unvalid post", post);
-		}
-		
+		const post_id = post.post.id;
 		this.createComment({
-			parent_id: parent_id,
+			post_id: post_id,
 			content: content
 		});
-		this.jDebug("Replied to post ID", parent_id);
+		console.log("Replied to post ID", post_id);
 	}
 	
 	replyToPrivateMessage(private_message, content){
-		if(typeof private_message == "object"){
-			const parent_id = private_message.private_message.id;
-		} else if(typeof private_message == "number") {
-			const parent_id = private_message;
-		} else {
-			console.error("Error: unvalid private_message", private_message);
-		}
-		
+		const recipient_id = private_message.private_message.id;
 		this.createPrivateMessage({
-			recipient_id: parent_id,
+			recipient_id: recipient_id,
 			content: content
 		})
-		this.jDebug("Replied to private_message ID", parent_id);
+		console.log("Replied to private_message ID", recipient_id);
 	}
+	
+	
+	
+	
+	
+	
+	
 	
 	// bare wrapped function
 	addAdmin(form){

@@ -14,12 +14,31 @@ let bot = new LemmyJSBot({
 	instance: LEMMY_INSTANCE,
 	debug: true,
 	
-	onNewComment: onNewComment,
-	onNewPost: onNewPost,
-	keywordsMention: ["reddit"],
-	onNewCommentKeywordMention: (keyword, comment) => {
-		console.log("keyword:", comment.comment.id)
+	onNewComment: (comment) => {
+		console.log("comment! ", comment.comment.id)
 		bot.preventReprocess(comment)
+	},
+	onNewPost: (post) => {
+		console.log("post! ", post.post.id)
+		bot.preventReprocess(post)
+	},
+	//keywordsMention: ["reddit_bot_linker"],
+	onNewCommentKeywordMention: (keyword, comment) => {
+		console.log("comment keyword!", comment)
+		bot.preventReprocess(comment)
+	},
+	onNewPostKeywordMention: (keyword, post) => {
+		console.log("post keyword!", post)
+		bot.preventReprocess(post)
+	},
+	onNewMention: (mention) => {
+		console.log("mention!", mention)
+		bot.preventReprocess(mention);
+	},
+	onNewPrivateMessage: (message) => {
+		console.log("new message!", message)
+		bot.replyToPrivateMessage(message, "how are you my friend")
+		bot.preventReprocess(message)
 	}
 });
 
@@ -28,10 +47,7 @@ if(await bot.login()){
 }
 bot.start();
 
-function onNewComment(comment){
-	console.log("comment: ", comment.comment.id)
-	bot.preventReprocess(comment)
-}
+
 
 function onNewPost(post){
 	//console.log(post.post.name)
