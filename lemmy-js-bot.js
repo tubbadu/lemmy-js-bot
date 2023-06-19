@@ -19,10 +19,10 @@ function db_init(){
 	Db.createTable("processedPrivateMessages", {
 		id: "int"
 	}, "id");
-	Db.createTable("reminders", {
+	/*Db.createTable("reminders", {
 		request_comment_id: "int",
 		time: "char(26)"
-	}, "request_comment_id");
+	}, "request_comment_id");*/
 }
 
 export class LemmyJSBot{
@@ -87,13 +87,19 @@ export class LemmyJSBot{
 			comments: new Set(),
 			private_messages: new Set(),
 			mentions: new Set()
-		}
+		};
 		this.newComments = [];
 		this.newPosts = [];
 		this.newMentions = [];
 		this.newKeywordsMention = [];
 		this.newPrivateMessage = [];
 		this.auth = undefined;
+		this.reprocessPrevented = {
+			posts: new Set(),
+			comments: new Set(),
+			private_messages: new Set(),
+			mentions: new Set()
+		};
 	}
 	
 
@@ -117,18 +123,22 @@ export class LemmyJSBot{
 			Db.insert({
 				id: x.person_mention.id,
 			}, "processedMentions");
+			//reprocessPrevented.mentions.add(x);
 		} else if(x.private_message) {
 			Db.insert({
 				id: x.private_message.id
 			}, "processedPrivateMessages");
+			//reprocessPrevented.private_messages.add(x);
 		} else if(x.comment){
 			Db.insert({
 				id: x.comment.id
 			}, "processedComments");
+			//reprocessPrevented.comments.add(x);
 		} else if(x.post){
 			Db.insert({
 				id:  x.post.id
 			}, "processedPosts");
+			//reprocessPrevented.posts.add(x);
 		} else {
 			// TODO get the type and then add
 			console.error("type specified not recognized:", type);
@@ -167,7 +177,8 @@ export class LemmyJSBot{
 							if(!this.checkForCommentKeywordMention(comment)){
 								// not already processed
 								this.tempProcessed.comments.add(comment.comment.id);
-								this.onNewComment(comment)
+								this.onNewComment(comment);
+								preventReprocess(comment);
 							}
 						}
 					}).catch(err => {
@@ -196,7 +207,8 @@ export class LemmyJSBot{
 							if(!!this.checkForPostKeywordMention(post)){
 								// not already processed
 								this.tempProcessed.posts.add(post.post.id);
-								this.onNewPost(post)
+								this.onNewPost(post);
+								preventReprocess(post);
 							}
 						}
 					});
@@ -220,7 +232,8 @@ export class LemmyJSBot{
 						if(!isPresent){
 							// not already processed
 							this.tempProcessed.mentions.add(mention.person_mention.id);
-							this.onNewMention(mention)
+							this.onNewMention(mention);
+							preventReprocess(mention);
 						}
 					});
 				}
@@ -243,6 +256,7 @@ export class LemmyJSBot{
 							// not already processed
 							this.tempProcessed.private_messages.add(private_message.private_message.id);
 							this.onNewPrivateMessage(private_message);
+							preventReprocess(private_message);
 						}
 					});
 				}
@@ -306,9 +320,9 @@ export class LemmyJSBot{
 	
 	refresh(){
 		console.log("fetching...")
+		this.refreshMentions();
 		this.refreshComments();
 		this.refreshPosts();
-		this.refreshMentions();
 		this.refreshPrivateMessages();
 	}
 	
@@ -343,7 +357,32 @@ export class LemmyJSBot{
 		})
 		console.log("Replied to private_message ID", recipient_id);
 	}
+	
+	replyToMention(mention, content){
+		if(isPost(mention.mention)){
+			replyToPost(mention, content);
+		} else if(isComment(mention.mention)){
+			replyToComment(mention, content);
+		} else {
+			console.error("Unable to reply to mention: not a post nor a mention.");
+		}
+	}
+	
+	isPost(x){
+		if(!x.comment && x.post){
+			return true;
+		} else {
+			return false;
+		}
+	}
 
+	isComment(x){
+		if(x.comment && x.post){
+			return true;
+		} else {
+			return false;
+		}
+	}
 	
 	// bare wrapped function
 	addAdmin(form){

@@ -33,11 +33,12 @@ let bot = new LemmyJSBot({
 	},
 	onNewMention: (mention) => {
 		console.log("mention!", mention)
+		bot.replyToMention(mention, "you mentioned me");
 		bot.preventReprocess(mention);
 	},
 	onNewPrivateMessage: (message) => {
 		console.log("new message!", message)
-		bot.replyToPrivateMessage(message, "how are you my friend")
+		bot.replyToPrivateMessage(message, "sorry I made a mess with the API");
 		bot.preventReprocess(message)
 	}
 });
