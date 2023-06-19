@@ -1,0 +1,114 @@
+import sqlite3 from "sqlite3"
+
+let db;
+
+function db_get(keys, table) {
+	return new Promise((resolve, reject) => {
+		db.get(`SELECT ${key} FROM ${table} WHERE ${key} = ?`, value, (error, row) => {
+			if (error) {
+				reject(error);
+			} else {
+				resolve(row);
+			}
+		});
+	});
+}
+
+function db_check(keys, table, callbackYes, callbackNo, callbackFail){
+	return new Promise((resolve, reject) => {
+		db_get(keys, table).then((row) => {
+			if(row){
+				resolve(true);
+				if(callbackYes) callbackYes(value);
+			} else {
+				resolve(false);
+				if(callbackNo) callbackNo(value);
+			}
+		}).catch((err) => {
+			resolve(err);
+			if(callbackFail) callbackFail(value, err);
+		})
+	})
+}
+
+function db_add(keys, table) {
+	const query = `INSERT OR IGNORE INTO ${table} (${key})
+		VALUES (?)`;
+
+	db.run(query, value, function (err) {
+		if (err) {
+			console.error(err);
+			return;
+		}
+
+		if (this.changes > 0) {
+			success = true;
+		}
+	});
+}
+
+function db_remove(keys, table) {
+	const query = `DELETE FROM ${table} WHERE ${key} = ?`;
+
+	db.run(query, value, function (err) {
+		if (err) {
+			console.error(err);
+			return;
+		}
+
+		if (this.changes > 0) {
+			success = true;
+		}
+	});
+}
+
+
+function db_createTable(table, keys, primaryKey){
+	let queryKeys = '';
+	for (const [key, value] of Object.entries(keys)) {
+		queryKeys += `${key} ${value}, `;
+	}
+	queryKeys += `PRIMARY KEY(${primaryKey.toString()})`;
+	let query = `CREATE TABLE IF NOT EXISTS ${table} (${queryKeys})`;
+	db.run(query);
+}
+
+function db_init(filename){
+	db = new sqlite3.Database(filename, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+		if (err) {
+			return console.error(err.message);
+		}
+		console.log('Connected to the SQlite database file.');
+	});
+}
+
+
+
+function db_close(){
+	db.close();
+}
+
+
+
+
+const Db = {
+	init: db_init,
+	close: db_close,
+	check: db_check,
+	add: db_add,
+	remove: db_remove,
+	get: db_get,
+	createTable: db_createTable
+}
+
+export default Db
+
+process.on('SIGINT', () => {
+	// Custom code to execute before closing
+	console.log('\nReceived SIGINT signal. Cleaning up...');
+	// Perform any necessary cleanup tasks, save state, etc.
+	db.close();
+
+	// Exit the process
+	process.exit(0);
+});

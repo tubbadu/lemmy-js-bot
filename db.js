@@ -1,34 +1,23 @@
 import sqlite3 from "sqlite3"
 
-function ifCommunitySubscribed(community_id, callbackSuccess, callbackFail) {
-	db.get(`SELECT community_id FROM subscribed WHERE community_id = ?`, community_id, (err, row) => {
-		if (err) {
-			console.error(err);
-			return;
-		}
+let db;
 
-		if (row) {
-			if(callbackSuccess) callbackSuccess(community_id); // Value exists
-		} else {
-			if(callbackFail) callbackFail(community_id)
-		}
-	});
-}
-
-async function isKeyPresent(key, value, table) {
-	/*let isPresent = false;
-	let x = await db.get(`SELECT ${key} FROM ${table} WHERE ${key} = ?`, value);
-	console.log(x, x.row, x.err, x[key])
-	return isPresent*/
-	let data = await getData(key, value, table);
-	if(data) return true;
-	else return false;
-}
-
-
-function getData(key, value, table) {
+function db_get(associations, table) {
 	return new Promise((resolve, reject) => {
-		db.get(`SELECT ${key} FROM ${table} WHERE ${key} = ?`, value, (error, row) => {
+		// Extract the keys and values from the associations object
+		const keys = [];
+		const values = [];
+		Object.entries(associations).forEach(([key, value]) => {
+			keys.push(key);
+			values.push(value);
+		});
+		// Construct the WHERE clause for the query dynamically
+		const whereClause = keys.map(key => `${key} = ?`).join(' AND ');
+		// Construct the SELECT query
+		const query = `SELECT * FROM ${table} WHERE ${whereClause}`;
+
+		// Execute the query with the provided values
+		db.get(query, values, (error, row) => {
 			if (error) {
 				reject(error);
 			} else {
@@ -38,119 +27,110 @@ function getData(key, value, table) {
 	});
 }
 
-async function addKey(key, value, table) {
-	let success = false;
-	const query = `INSERT OR IGNORE INTO ${table} (${key})
-		VALUES (?)`;
-
-	db.run(query, value, function (err) {
-		if (err) {
-			console.error(err);
-			return;
-		}
-
-		if (this.changes > 0) {
-			success = true;
-		}
-	});
-	return success;
+function db_check(keys, table, callbackYes, callbackNo, callbackFail){
+	return new Promise((resolve, reject) => {
+		db_get(keys, table).then((row) => {
+			if(row){
+				resolve(true);
+				if(callbackYes) callbackYes(value);
+			} else {
+				resolve(false);
+				if(callbackNo) callbackNo(value);
+			}
+		}).catch((err) => {
+			resolve(err);
+			if(callbackFail) callbackFail(value, err);
+		})
+	})
 }
 
-function subscribeCommunity(community_id, callbackSuccess, callbackFail) {
-	const query = `INSERT OR IGNORE INTO subscribed (community_id)
-		VALUES (?)`;
+function db_insert(associations, table) {
+	return new Promise((resolve, reject) => {
+		// Extract the keys and values from the data object
+		const keys = [];
+		const values = [];
+		Object.entries(associations).forEach(([key, value]) => {
+			keys.push(key);
+			values.push(value);
+		});
 
-	db.run(query, community_id, function (err) {
-		if (err) {
-			console.error(err);
-			return;
-		}
+		// Construct the placeholders for the query
+		const placeholders = values.map(() => '?').join(', ');
 
-		if (this.changes > 0) {
-			console.log(`Value ${community_id} inserted into the database.`);
-			if(callbackSuccess) callbackSuccess(community_id);
-		} else {
-			console.log(`Value ${community_id} already exists in the database.`);
-			if(callbackFail) callbackFail(community_id);
-		}
-	});
-}
+		// Construct the INSERT query dynamically
+		const query = `INSERT OR IGNORE INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`;
 
-function unsubscribeCommunity(community_id, callbackSuccess, callbackFail) {
-	const query = `DELETE FROM subscribed
-		WHERE community_id = ?`;
-
-	db.run(query, community_id, function (err) {
-		if (err) {
-			console.error(err);
-			return;
-		}
-
-		if (this.changes > 0) {
-			console.log(`Value ${community_id} removed from the database.`);
-			if(callbackSuccess) callbackSuccess(community_id);
-		} else {
-			console.log(`Value ${community_id} is not present in the database.`);
-			if(callbackFail) callbackFail(community_id);
-		}
+		// Execute the query with the provided values
+		db.run(query, values, function (error) {
+			if (error) {
+				reject(error);
+			} else {
+				resolve(this.lastID);
+			}
+		});
 	});
 }
 
-function db_init(){
-	db.run(`CREATE TABLE IF NOT EXISTS subscribed_communities (
-		community_id int,
-		PRIMARY KEY(community_id)
-	)`);
-	db.run(`CREATE TABLE IF NOT EXISTS processedComments (
-		id int,
-		PRIMARY KEY(id)
-	)`);
-	db.run(`CREATE TABLE IF NOT EXISTS processedPosts(
-		id int,
-		PRIMARY KEY(id)
-	)`);
-	db.run(`CREATE TABLE IF NOT EXISTS processedMentions(
-		id int,
-		PRIMARY KEY(id)
-	)`);
-	db.run(`CREATE TABLE IF NOT EXISTS processedPrivateMessages(
-		id int,
-		PRIMARY KEY(id)
-	)`);
-	db.run(`CREATE TABLE IF NOT EXISTS reminders (
-		request_comment_id INT,
-		time CHAR(26),
-		PRIMARY KEY(request_comment_id)
-	)`);
+function db_remove(associations, table) {
+	return new Promise((resolve, reject) => {
+		// Extract the keys and values from the associations object
+		const keys = [];
+		const values = [];
+		Object.entries(associations).forEach(([key, value]) => {
+			keys.push(key);
+			values.push(value);
+		});
+		// Construct the WHERE clause for the query dynamically
+		const whereClause = keys.map(key => `${key} = ?`).join(' AND ');
+		// Construct the SELECT query
+		const query = `DELETE FROM ${table} WHERE ${whereClause}`;
+
+		// Execute the query with the provided values
+		db.get(query, values, (error, row) => {
+			if (error) {
+				reject(error);
+			} else {
+				resolve(row);
+			}
+		});
+	});
 }
 
 
+function db_createTable(table, keys, primaryKey){
+	let queryKeys = '';
+	for (const [key, type] of Object.entries(keys)) {
+		queryKeys += `${key} ${type}, `;
+	}
+	queryKeys += `PRIMARY KEY(${primaryKey.toString()})`;
+	let query = `CREATE TABLE IF NOT EXISTS ${table} (${queryKeys})`;
+	db.run(query);
+}
+
+function db_init(filename){
+	db = new sqlite3.Database(filename, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+		if (err) {
+			return console.error(err.message);
+		}
+		console.log('Connected to the SQlite database file.');
+	});
+}
 
 function db_close(){
 	db.close();
 }
 
-let db = new sqlite3.Database('./data.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-	if (err) {
-		return console.error(err.message);
-	}
-	console.log('Connected to the SQlite database file.');
-});
-
-db_init();
-
 const Db = {
 	init: db_init,
-	//subscribeCommunity: subscribe,
-	//unsubscribeCommunity: unsubscribe,
-	//ifCommunitySubscribed: ifSubscribed,
 	close: db_close,
-	isKeyPresent: isKeyPresent,
-	addKey: addKey,
+	check: db_check,
+	insert: db_insert,
+	remove: db_remove,
+	get: db_get,
+	createTable: db_createTable
 }
 
 export default Db
-
 
 process.on('SIGINT', () => {
 	// Custom code to execute before closing

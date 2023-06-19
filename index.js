@@ -14,13 +14,26 @@ let bot = new LemmyJSBot({
 	instance: LEMMY_INSTANCE,
 	debug: true,
 	
-	onNewComment: onNewComment
+	onNewComment: onNewComment,
+	onNewPost: onNewPost,
+	keywordsMention: ["reddit"],
+	onNewCommentKeywordMention: (keyword, comment) => {
+		console.log("keyword:", comment.comment.id)
+		bot.preventReprocess(comment)
+	}
 });
 
-bot.login();
+if(await bot.login()){
+	console.log("Successfully logged in.");
+}
 bot.start();
 
 function onNewComment(comment){
-	console.log(comment.comment.content)
+	console.log("comment: ", comment.comment.id)
 	bot.preventReprocess(comment)
+}
+
+function onNewPost(post){
+	//console.log(post.post.name)
+	//bot.preventReprocess(post)
 }
