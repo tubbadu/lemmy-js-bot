@@ -336,20 +336,14 @@ export class LemmyJSBot{
 	}
 	
 	replyToPrivateMessage(private_message, content){
-		const recipient_id = private_message.private_message.id;
+		const recipient_id = private_message.private_message.creator_id;
 		this.createPrivateMessage({
 			recipient_id: recipient_id,
 			content: content
 		})
 		console.log("Replied to private_message ID", recipient_id);
 	}
-	
-	
-	
-	
-	
-	
-	
+
 	
 	// bare wrapped function
 	addAdmin(form){
