@@ -134,7 +134,7 @@ export default Db
 
 process.on('SIGINT', () => {
 	// Custom code to execute before closing
-	console.log('\nReceived SIGINT signal. Cleaning up...');
+	console.log('\nReceived SIGINT signal. Closing database...');
 	// Perform any necessary cleanup tasks, save state, etc.
 	db.close();
 

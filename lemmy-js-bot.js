@@ -119,22 +119,17 @@ export class LemmyJSBot{
 	}
 	
 	preventReprocess(x){
-		if(x.person_mention){
-			Db.insert({
-				id: x.person_mention.id,
-			}, "processedMentions");
-			//reprocessPrevented.mentions.add(x);
-		} else if(x.private_message) {
+		if(this.isPrivateMessage(x)) {
 			Db.insert({
 				id: x.private_message.id
 			}, "processedPrivateMessages");
 			//reprocessPrevented.private_messages.add(x);
-		} else if(x.comment){
+		} else if(this.isComment(x)){
 			Db.insert({
 				id: x.comment.id
 			}, "processedComments");
 			//reprocessPrevented.comments.add(x);
-		} else if(x.post){
+		} else if(this.isPost(x)){
 			Db.insert({
 				id:  x.post.id
 			}, "processedPosts");
@@ -178,7 +173,7 @@ export class LemmyJSBot{
 								// not already processed
 								this.tempProcessed.comments.add(comment.comment.id);
 								this.onNewComment(comment);
-								preventReprocess(comment);
+								this.preventReprocess(comment);
 							}
 						}
 					}).catch(err => {
@@ -208,7 +203,7 @@ export class LemmyJSBot{
 								// not already processed
 								this.tempProcessed.posts.add(post.post.id);
 								this.onNewPost(post);
-								preventReprocess(post);
+								this.preventReprocess(post);
 							}
 						}
 					});
@@ -226,14 +221,26 @@ export class LemmyJSBot{
 		}).then(res => {
 			res.mentions.forEach(mention => {
 				if(!this.isSentByMe(mention) && !this.tempProcessed.mentions.has(mention.person_mention.id)){
+					var m_id, m_table;
+					if(this.isPost(mention)){
+						console.log("a")
+						m_id = mention.post.id;
+						m_table = "processedPosts";
+					} else if(this.isComment(mention)){
+						m_id = mention.comment.id;
+						m_table = "processedComments";
+					} else {
+						console.error("Error: mention is not a post nor a comment.", mention);
+					}
+					
 					Db.check({
-						id: mention.person_mention.id,
-					}, "processedMentions").then(isPresent => {
+						id: m_id,
+					}, m_table).then(isPresent => {
 						if(!isPresent){
 							// not already processed
 							this.tempProcessed.mentions.add(mention.person_mention.id);
 							this.onNewMention(mention);
-							preventReprocess(mention);
+							this.preventReprocess(mention);
 						}
 					});
 				}
@@ -256,7 +263,7 @@ export class LemmyJSBot{
 							// not already processed
 							this.tempProcessed.private_messages.add(private_message.private_message.id);
 							this.onNewPrivateMessage(private_message);
-							preventReprocess(private_message);
+							this.preventReprocess(private_message);
 						}
 					});
 				}
@@ -332,7 +339,7 @@ export class LemmyJSBot{
 	replyToComment(comment, content){
 		const post_id = comment.post.id;
 		const parent_id = comment.comment.id;
-		this.createComment({
+		this.actions.createComment({
 			post_id: post_id,
 			parent_id: parent_id,
 			content: content
@@ -342,7 +349,7 @@ export class LemmyJSBot{
 	
 	replyToPost(post, content){
 		const post_id = post.post.id;
-		this.createComment({
+		this.actions.createComment({
 			post_id: post_id,
 			content: content
 		});
@@ -351,7 +358,7 @@ export class LemmyJSBot{
 	
 	replyToPrivateMessage(private_message, content){
 		const recipient_id = private_message.private_message.creator_id;
-		this.createPrivateMessage({
+		this.actions.createPrivateMessage({
 			recipient_id: recipient_id,
 			content: content
 		})
@@ -359,10 +366,10 @@ export class LemmyJSBot{
 	}
 	
 	replyToMention(mention, content){
-		if(isPost(mention.mention)){
-			replyToPost(mention, content);
-		} else if(isComment(mention.mention)){
-			replyToComment(mention, content);
+		if(this.isPost(mention)){
+			this.replyToPost(mention, content);
+		} else if(this.isComment(mention)){
+			this.replyToComment(mention, content);
 		} else {
 			console.error("Unable to reply to mention: not a post nor a mention.");
 		}
@@ -384,6 +391,364 @@ export class LemmyJSBot{
 		}
 	}
 	
+	isMention(x){
+		if(x.person_mention){
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	isPrivateMessage(x){
+		if(x.private_message){
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	actions = {
+		addAdmin: (form) => {
+			form.auth = this.auth;
+			return this.client.addAdmin(form);
+		},
+		addModToCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.addModToCommunity(form);
+		},
+		approveRegistrationApplication: (form) => {
+			form.auth = this.auth;
+			return this.client.approveRegistrationApplication(form);
+		},
+		banFromCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.banFromCommunity(form);
+		},
+		banPerson: (form) => {
+			form.auth = this.auth;
+			return this.client.banPerson(form);
+		},
+		blockCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.blockCommunity(form);
+		},
+		blockPerson: (form) => {
+			form.auth = this.auth;
+			return this.client.blockPerson(form);
+		},
+		buildFullUrl: (form) => {
+			form.auth = this.auth;
+			return this.client.buildFullUrl(form);
+		},
+		changePassword: (form) => {
+			form.auth = this.auth;
+			return this.client.changePassword(form);
+		},
+		createComment: (form) => {
+			form.auth = this.auth;
+			return this.client.createComment(form);
+		},
+		createCommentReport: (form) => {
+			form.auth = this.auth;
+			return this.client.createCommentReport(form);
+		},
+		createCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.createCommunity(form);
+		},
+		createPost: (form) => {
+			form.auth = this.auth;
+			return this.client.createPost(form);
+		},
+		createPostReport: (form) => {
+			form.auth = this.auth;
+			return this.client.createPostReport(form);
+		},
+		createPrivateMessage: (form) => {
+			form.auth = this.auth;
+			return this.client.createPrivateMessage(form);
+		},
+		createPrivateMessageReport: (form) => {
+			form.auth = this.auth;
+			return this.client.createPrivateMessageReport(form);
+		},
+		createSite: (form) => {
+			form.auth = this.auth;
+			return this.client.createSite(form);
+		},
+		deleteAccount: (form) => {
+			form.auth = this.auth;
+			return this.client.deleteAccount(form);
+		},
+		deleteComment: (form) => {
+			form.auth = this.auth;
+			return this.client.deleteComment(form);
+		},
+		deleteCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.deleteCommunity(form);
+		},
+		deletePost: (form) => {
+			form.auth = this.auth;
+			return this.client.deletePost(form);
+		},
+		deletePrivateMessage: (form) => {
+			form.auth = this.auth;
+			return this.client.deletePrivateMessage(form);
+		},
+		editComment: (form) => {
+			form.auth = this.auth;
+			return this.client.editComment(form);
+		},
+		editCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.editCommunity(form);
+		},
+		editPost: (form) => {
+			form.auth = this.auth;
+			return this.client.editPost(form);
+		},
+		editPrivateMessage: (form) => {
+			form.auth = this.auth;
+			return this.client.editPrivateMessage(form);
+		},
+		editSite: (form) => {
+			form.auth = this.auth;
+			return this.client.editSite(form);
+		},
+		featurePost: (form) => {
+			form.auth = this.auth;
+			return this.client.featurePost(form);
+		},
+		followCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.followCommunity(form);
+		},
+		getBannedPersons: (form) => {
+			form.auth = this.auth;
+			return this.client.getBannedPersons(form);
+		},
+		getCaptcha: (form) => {
+			form.auth = this.auth;
+			return this.client.getCaptcha(form);
+		},
+		getComments: (form) => {
+			form.auth = this.auth;
+			return this.client.getComments(form);
+		},
+		getCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.getCommunity(form);
+		},
+		getModlog: (form) => {
+			form.auth = this.auth;
+			return this.client.getModlog(form);
+		},
+		getPersonDetails: (form) => {
+			form.auth = this.auth;
+			return this.client.getPersonDetails(form);
+		},
+		getPersonMentions: (form) => {
+			form.auth = this.auth;
+			return this.client.getPersonMentions(form);
+		},
+		getPost: (form) => {
+			form.auth = this.auth;
+			return this.client.getPost(form);
+		},
+		getPosts: (form) => {
+			form.auth = this.auth;
+			return this.client.getPosts(form);
+		},
+		getPrivateMessages: (form) => {
+			form.auth = this.auth;
+			return this.client.getPrivateMessages(form);
+		},
+		getReplies: (form) => {
+			form.auth = this.auth;
+			return this.client.getReplies(form);
+		},
+		getReportCount: (form) => {
+			form.auth = this.auth;
+			return this.client.getReportCount(form);
+		},
+		getSite: (form) => {
+			form.auth = this.auth;
+			return this.client.getSite(form);
+		},
+		getSiteMetadata: (form) => {
+			form.auth = this.auth;
+			return this.client.getSiteMetadata(form);
+		},
+		getUnreadCount: (form) => {
+			form.auth = this.auth;
+			return this.client.getUnreadCount(form);
+		},
+		getUnreadRegistrationApplicationCount: (form) => {
+			form.auth = this.auth;
+			return this.client.getUnreadRegistrationApplicationCount(form);
+		},
+		leaveAdmin: (form) => {
+			form.auth = this.auth;
+			return this.client.leaveAdmin(form);
+		},
+		likeComment: (form) => {
+			form.auth = this.auth;
+			return this.client.likeComment(form);
+		},
+		likePost: (form) => {
+			form.auth = this.auth;
+			return this.client.likePost(form);
+		},
+		listCommentReports: (form) => {
+			form.auth = this.auth;
+			return this.client.listCommentReports(form);
+		},
+		listCommunities: (form) => {
+			form.auth = this.auth;
+			return this.client.listCommunities(form);
+		},
+		listPostReports: (form) => {
+			form.auth = this.auth;
+			return this.client.listPostReports(form);
+		},
+		listPrivateMessageReports: (form) => {
+			form.auth = this.auth;
+			return this.client.listPrivateMessageReports(form);
+		},
+		listRegistrationApplications: (form) => {
+			form.auth = this.auth;
+			return this.client.listRegistrationApplications(form);
+		},
+		lockPost: (form) => {
+			form.auth = this.auth;
+			return this.client.lockPost(form);
+		},
+		login: (form) => {
+			form.auth = this.auth;
+			return this.client.login(form);
+		},
+		markAllAsRead: (form) => {
+			form.auth = this.auth;
+			return this.client.markAllAsRead(form);
+		},
+		markCommentReplyAsRead: (form) => {
+			form.auth = this.auth;
+			return this.client.markCommentReplyAsRead(form);
+		},
+		markPersonMentionAsRead: (form) => {
+			form.auth = this.auth;
+			return this.client.markPersonMentionAsRead(form);
+		},
+		markPostAsRead: (form) => {
+			form.auth = this.auth;
+			return this.client.markPostAsRead(form);
+		},
+		markPrivateMessageAsRead: (form) => {
+			form.auth = this.auth;
+			return this.client.markPrivateMessageAsRead(form);
+		},
+		passwordChange: (form) => {
+			form.auth = this.auth;
+			return this.client.passwordChange(form);
+		},
+		passwordReset: (form) => {
+			form.auth = this.auth;
+			return this.client.passwordReset(form);
+		},
+		purgeComment: (form) => {
+			form.auth = this.auth;
+			return this.client.purgeComment(form);
+		},
+		purgeCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.purgeCommunity(form);
+		},
+		purgePerson: (form) => {
+			form.auth = this.auth;
+			return this.client.purgePerson(form);
+		},
+		purgePost: (form) => {
+			form.auth = this.auth;
+			return this.client.purgePost(form);
+		},
+		register: (form) => {
+			form.auth = this.auth;
+			return this.client.register(form);
+		},
+		removeComment: (form) => {
+			form.auth = this.auth;
+			return this.client.removeComment(form);
+		},
+		removeCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.removeCommunity(form);
+		},
+		removePost: (form) => {
+			form.auth = this.auth;
+			return this.client.removePost(form);
+		},
+		resolveCommentReport: (form) => {
+			form.auth = this.auth;
+			return this.client.resolveCommentReport(form);
+		},
+		resolveObject: (form) => {
+			form.auth = this.auth;
+			return this.client.resolveObject(form);
+		},
+		resolvePostReport: (form) => {
+			form.auth = this.auth;
+			return this.client.resolvePostReport(form);
+		},
+		resolvePrivateMessageReport: (form) => {
+			form.auth = this.auth;
+			return this.client.resolvePrivateMessageReport(form);
+		},
+		saveComment: (form) => {
+			form.auth = this.auth;
+			return this.client.saveComment(form);
+		},
+		savePost: (form) => {
+			form.auth = this.auth;
+			return this.client.savePost(form);
+		},
+		saveUserSettings: (form) => {
+			form.auth = this.auth;
+			return this.client.saveUserSettings(form);
+		},
+		search: (form) => {
+			form.auth = this.auth;
+			return this.client.search(form);
+		},
+		transferCommunity: (form) => {
+			form.auth = this.auth;
+			return this.client.transferCommunity(form);
+		},
+		verifyEmail: (form) => {
+			form.auth = this.auth;
+			return this.client.verifyEmail(form);
+		},
+		wrapper: (form) => {
+			form.auth = this.auth;
+			return this.client.wrapper(form);
+		}
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
 	// bare wrapped function
 	addAdmin(form){
 		form.auth = this.auth;
@@ -705,4 +1070,4 @@ export class LemmyJSBot{
 		form.auth = this.auth;
 		this.client.wrapper(form);
 	}
-}
+}*/

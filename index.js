@@ -24,20 +24,20 @@ let bot = new LemmyJSBot({
 	},
 	//keywordsMention: ["reddit_bot_linker"],
 	onNewCommentKeywordMention: (keyword, comment) => {
-		console.log("comment keyword!", comment)
+		//console.log("comment keyword!", comment)
 		bot.preventReprocess(comment)
 	},
 	onNewPostKeywordMention: (keyword, post) => {
-		console.log("post keyword!", post)
+		//console.log("post keyword!", post)
 		bot.preventReprocess(post)
 	},
 	onNewMention: (mention) => {
-		console.log("mention!", mention)
+		//console.log("mention!", mention)
 		bot.replyToMention(mention, "you mentioned me");
 		bot.preventReprocess(mention);
 	},
 	onNewPrivateMessage: (message) => {
-		console.log("new message!", message)
+		//console.log("new message!", message)
 		bot.replyToPrivateMessage(message, "sorry I made a mess with the API");
 		bot.preventReprocess(message)
 	}
